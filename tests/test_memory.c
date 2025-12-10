@@ -6,12 +6,13 @@
 #include <string.h>
 
 // =================================================================
-// GRUPA 3: FUNKCJONALNOŚĆ PAMIĘCI
+// GROUP 3: MEMORY FUNCTIONALITY
 // =================================================================
 
 /**
- * @brief Testuje, czy Memory__build_chunk poprawnie inicjalizuje
- * i używa funkcji kompresji dla iteracyjnej budowy.
+ * @brief Tests whether Memory__build_chunk correctly initializes
+ * and uses the compression function for iterative building.
+ * * NOTE: This test verifies determinism and execution, not hash correctness.
  */
 void test_memory_build_chunk_determinism() {
   const char *name = "Build Chunk Determinism";
@@ -19,7 +20,7 @@ void test_memory_build_chunk_determinism() {
 
   Config c = Config__default();
   c.antecedent_count = 4;
-  c.chunk_size = 8;
+  c.chunk_size = 8; // Small chunk for simple test
 
   uint8_t raw_id[] = {0x01, 0x02, 0x03, 0x04};
   ChallengeId id = {.bytes = raw_id, .bytes_len = 4};
@@ -27,17 +28,21 @@ void test_memory_build_chunk_determinism() {
   Memory *mem1 = Memory__new(c);
   Memory *mem2 = Memory__new(c);
 
+  // Two independent executions on identical data
   Memory__build_chunk(&c, 0, mem1->chunks[0], &id);
   Memory__build_chunk(&c, 0, mem2->chunks[0], &id);
 
+  // Verification: Hash of the first element (i=0, initialization)
   Element *e1_init = Memory__get(mem1, 0);
   Element *e2_init = Memory__get(mem2, 0);
 
   TEST_ASSERT(memcmp(e1_init->data, e2_init->data, ELEMENT_SIZE) == 0, name);
 
+  // Verification: Hash of the last element (i=7, compression)
   Element *e1_comp = Memory__get(mem1, 7);
   Element *e2_comp = Memory__get(mem2, 7);
 
+  // Key assertion: Data dependency must lead to an identical result
   TEST_ASSERT(memcmp(e1_comp->data, e2_comp->data, ELEMENT_SIZE) == 0, name);
 
   Memory__drop(mem1);
@@ -45,7 +50,7 @@ void test_memory_build_chunk_determinism() {
 }
 
 /**
- * @brief Weryfikacja kluczowych indeksów i reprodoukowalności budowania
+ * @brief Verification of key indices and build reproducibility
  */
 void test_trace_element_reproducibility() {
   const char *name = "Trace Element Reproducibility";
@@ -73,14 +78,18 @@ void test_trace_element_reproducibility() {
     const int element_index_in_chunk = global_index % chunk_size;
 
     if (element_index_in_chunk < antecedent_count) {
+      // Initialization phase: the element itself is returned as the only
+      // antecedent.
       TEST_ASSERT(traced_count == 1, name);
       TEST_ASSERT(memcmp(antecedents->data,
                          Memory__get(memory, global_index)->data,
                          ELEMENT_SIZE) == 0,
                   name);
     } else {
+      // Compression phase: antecedent_count must be present
       TEST_ASSERT(traced_count == (size_t)antecedent_count, name);
 
+      // Re-compression and comparison
       Element recomputed_element = Memory__compress(
           antecedents, traced_count, (uint64_t)global_index, challenge_id);
       Element *original_element = Memory__get(memory, global_index);
@@ -99,8 +108,8 @@ void test_trace_element_reproducibility() {
 }
 
 /**
- * @brief Porównanie wyjścia Memory__build_all_chunks z referencyjnym hashem z
- * Rust.
+ * @brief Comparison of Memory__build_all_chunks output with the Rust reference
+ * hash.
  */
 void test_memory_build_chunk_determinism_rust_ref() {
   const char *name = "Build Determinism (Rust Ref)";
@@ -115,7 +124,7 @@ void test_memory_build_chunk_determinism_rust_ref() {
   Memory *memory = Memory__new(config);
   Memory__build_all_chunks(memory, challenge_id);
 
-  // ---- Expected output from Rust reference (Złoty Wzorzec) ----
+  // ---- Expected output from Rust reference (Golden value) ----
   const unsigned char EXPECTED_BYTES[8][64] = {
       {0xbf, 0xaa, 0x82, 0x0c, 0xbe, 0x6b, 0xa0, 0x08, 0x95, 0x74, 0xcb,
        0x35, 0x42, 0xd4, 0x12, 0xb6, 0x3b, 0xf2, 0xa6, 0x7b, 0x18, 0xdb,

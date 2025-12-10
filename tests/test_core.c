@@ -6,7 +6,7 @@
 #include <string.h>
 
 // =================================================================
-// GRUPA 1: KONFIGURACJA I ALOKACJA PAMIĘCI
+// GROUP 1: CONFIGURATION AND MEMORY ALLOCATION
 // =================================================================
 
 void test_config_defaults() {
@@ -48,7 +48,7 @@ void test_memory_allocation() {
     TEST_ASSERT(mem->chunks != NULL, name);
     TEST_ASSERT(mem->chunks[0] != NULL, name);
 
-    // Sprawdź, czy pamięć jest zainicjalizowana zerami
+    // Check if memory is initialized to zeros
     Element *first_element = Memory__get(mem, 0);
     if (first_element) {
       TEST_ASSERT(
@@ -61,7 +61,7 @@ void test_memory_allocation() {
 }
 
 // =================================================================
-// GRUPA 2: FUNKCJE INDEKSUJĄCE (ITSUKU)
+// GROUP 2: INDEXING FUNCTIONS (ITSUKU)
 // =================================================================
 
 void test_indexing_argon2() {
@@ -71,6 +71,7 @@ void test_indexing_argon2() {
   uint8_t seed1[] = {0x01, 0x00, 0x00, 0x00};
   size_t idx1 = calculate_argon2_index(seed1, 1000);
 
+  // Expected index: Z = 1000 - 1 - 0 = 999
   TEST_ASSERT(idx1 == 999, name);
 }
 
@@ -97,7 +98,7 @@ void test_indexing_phi_variants() {
 }
 
 /**
- * @brief Testuje wewnętrzne operacje (ADD i XOR) na Elementach.
+ * @brief Tests internal operations (ADD and XOR) on Elements.
  */
 void test_element_operations() {
   const char *name = "Element Operations";
@@ -107,12 +108,13 @@ void test_element_operations() {
   Element b = Element__zero();
   Element c = Element__zero();
 
-  uint64_t val_a = 0xFFFFFFFFFFFFFFF0UL;
-  uint64_t val_b = 0x0000000000000010UL;
+  // Set values that will cause wrapping during addition
+  uint64_t val_a = 0xFFFFFFFFFFFFFFF0UL; // -16
+  uint64_t val_b = 0x0000000000000010UL; // +16
   uint64_t val_x = 0xAAAAAAAAAAAAAAAALL;
   uint64_t val_y = 0x5555555555555555LL;
 
-  // Inicjalizacja A i B
+  // Initialize A and B
   a.data[0] = val_a;
   a.data[1] = val_x;
   b.data[0] = val_b;
@@ -122,11 +124,15 @@ void test_element_operations() {
   c = a;
   Element__add_assign(&c, &b);
 
+  // Expected for c.data[0]: 0xFF..F0 + 0x10 = 0 (wrapping)
   TEST_ASSERT(c.data[0] == 0UL, name);
+
+  // Expected for c.data[1]: 0xAAAA... + 0x5555... = 0xFFFF...
   TEST_ASSERT(c.data[1] == ULLONG_MAX, name);
 
   // 2. Test XOR
   c = a;
   Element__bitxor_assign(&c, &b);
+  // Expected: c.data[1] = 0xAAAA ^ 0x5555 = 0xFF..FF
   TEST_ASSERT(c.data[1] == ULLONG_MAX, name);
 }

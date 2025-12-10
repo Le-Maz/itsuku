@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Funkcja pomocnicza dla testów Merkle Tree (konieczna, ponieważ używa logiki
-// testowej)
 MerkleTree *MerkleTree__build_for_test(Config config, ChallengeId *challenge_id,
                                        Memory *memory) {
   MerkleTree *tree = MerkleTree__new(config);
@@ -20,12 +18,12 @@ MerkleTree *MerkleTree__build_for_test(Config config, ChallengeId *challenge_id,
   return tree;
 }
 
-// Złoty Wzorzec z testu Rust
+// Golden value from Rust test
 const uint8_t EXPECTED_ROOT_HASH[] = {0xbf, 0x8d, 0xbf, 0xaf, 0xcc};
 const size_t EXPECTED_ROOT_HASH_LEN = 5;
 
 // =================================================================
-// GRUPA 4: FUNKCJONALNOŚĆ MERKLE TREE
+// GROUP 4: MERKLE TREE FUNCTIONALITY
 // =================================================================
 
 void test_merkle_node_size() {
@@ -33,10 +31,12 @@ void test_merkle_node_size() {
   printf("  [Test] %s\n", name);
   Config c = Config__default();
 
+  // Test d=70, L=9: M=10
   c.difficulty_bits = 70;
   size_t node_size_70 = MerkleTree__calculate_node_size(&c);
   TEST_ASSERT(node_size_70 == 10, name);
 
+  // Test d=24, L=9: M=5 (consistent with mathematical result ceil)
   c.difficulty_bits = 24;
   c.search_length = 9;
   size_t node_size_24 = MerkleTree__calculate_node_size(&c);
@@ -49,14 +49,14 @@ void test_merkle_tree_allocation() {
   Config config = Config__default();
   config.chunk_count = 2;
   config.chunk_size = 8;
-  size_t total_elements = config.chunk_count * config.chunk_size;
+  size_t total_elements = config.chunk_count * config.chunk_size; // 16
 
   MerkleTree *tree = MerkleTree__new(config);
 
   TEST_ASSERT(tree != NULL, name);
   if (tree) {
-    size_t expected_node_size = MerkleTree__calculate_node_size(&config);
-    size_t expected_nodes_count = 2 * total_elements - 1;
+    size_t expected_node_size = MerkleTree__calculate_node_size(&config); // M=5
+    size_t expected_nodes_count = 2 * total_elements - 1;                 // 31
     size_t expected_total_bytes = expected_nodes_count * expected_node_size;
 
     TEST_ASSERT(tree->node_size == expected_node_size, name);
@@ -79,6 +79,7 @@ void test_merkle_root_matches_rust() {
   Memory *memory = Memory__new(config);
   Memory__build_all_chunks(memory, challenge_id);
 
+  // Build the tree
   MerkleTree *tree = MerkleTree__build_for_test(config, challenge_id, memory);
 
   if (tree) {
@@ -86,6 +87,7 @@ void test_merkle_root_matches_rust() {
 
     TEST_ASSERT(root_hash != NULL, name);
     if (root_hash) {
+      // Compare the first 5 bytes with EXPECTED_ROOT_HASH
       TEST_ASSERT(
           memcmp(root_hash, EXPECTED_ROOT_HASH, EXPECTED_ROOT_HASH_LEN) == 0,
           name);
@@ -119,16 +121,21 @@ void test_merkle_trace_node() {
     return;
   }
 
+  // Element 15 is leaf node index 30 (16-1 + 15)
   size_t element_index = 15;
   size_t leaf_node_index =
-      (config.chunk_count * config.chunk_size) - 1 + element_index;
+      (config.chunk_count * config.chunk_size) - 1 + element_index; // 30
 
+  // Use the new interface: HashMap with 'free' destructor for values (hashes)
   HashMap traced_nodes = HashMap__new(free);
   MerkleTree__trace_node(tree, leaf_node_index, traced_nodes);
 
+  // Expected number of nodes: 9.
   size_t count = HashMap__size(traced_nodes);
   TEST_ASSERT(count == 9, name);
 
+  // Verification that all expected indices are in the map and have the correct
+  // hash
   size_t expected_indices[] = {0, 1, 2, 5, 6, 13, 14, 29, 30};
   for (size_t i = 0; i < 9; ++i) {
     size_t idx = expected_indices[i];
