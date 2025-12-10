@@ -5,34 +5,35 @@
 #include <string.h>
 
 /**
- * @brief Alokuje i inicjalizuje nową strukturę ChallengeId.
+ * @brief Allocates and initializes a new ChallengeId structure.
  *
- * Przejmuje własność nad skopiowanymi bajtami.
+ * Takes ownership of the copied bytes.
  */
-ChallengeId *ChallengeId__new(const uint8_t *bytes, size_t bytes_len) {
-  ChallengeId *id = (ChallengeId *)malloc(sizeof(ChallengeId));
-  if (!id) {
-    return NULL;
+ChallengeId *ChallengeId__new(const uint8_t *input_bytes,
+                              size_t input_bytes_length) {
+  ChallengeId *challenge_id = (ChallengeId *)malloc(sizeof(ChallengeId));
+  if (!challenge_id) {
+    return NULL; // Failed to allocate structure
   }
 
-  id->bytes = (uint8_t *)malloc(bytes_len);
-  if (!id->bytes) {
-    free(id);
-    return NULL;
+  challenge_id->bytes = (uint8_t *)malloc(input_bytes_length);
+  if (!challenge_id->bytes) {
+    free(challenge_id);
+    return NULL; // Failed to allocate internal byte buffer
   }
 
-  memcpy(id->bytes, bytes, bytes_len);
-  id->bytes_len = bytes_len;
+  memcpy(challenge_id->bytes, input_bytes, input_bytes_length);
+  challenge_id->bytes_len = input_bytes_length;
 
-  return id;
+  return challenge_id;
 }
 
 /**
- * @brief Dealokuje strukturę ChallengeId, w tym przechowywane bajty.
+ * @brief Deallocates a ChallengeId structure, including its stored bytes.
  */
 void ChallengeId__drop(ChallengeId *self) {
   if (self) {
-    free(self->bytes);
-    free(self);
+    free(self->bytes); // Free internal byte buffer
+    free(self);        // Free structure itself
   }
 }

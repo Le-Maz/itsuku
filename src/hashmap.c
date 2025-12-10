@@ -2,45 +2,55 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Domyślny rozmiar tablicy dla mapy haszującej
+// Default initial bucket array size for the hash map
 #define INITIAL_CAPACITY 64
 
-// --- Wewnętrzne struktury ---
+// --- Internal Structures ---
 
 /**
- * @brief Pojedynczy wpis.
+ * @brief Represents a single key-value entry in the hash map.
+ *        Implemented as a node in a linked list (separate chaining).
  */
 typedef struct HashMapEntry {
-  size_t key;
-  void *value;
-  struct HashMapEntry *next;
+  size_t key;                // The key for this entry
+  void *value;               // Pointer to the stored value
+  struct HashMapEntry *next; // Pointer to the next entry in the chain
 } HashMapEntry;
 
 /**
- * @brief Właściwa struktura mapy haszującej.
+ * @brief The actual internal hash map structure.
+ *        The public API exposes only an opaque pointer.
  */
 typedef struct HashMapInner {
-  size_t size;                        // Aktualna liczba elementów
-  size_t capacity;                    // Rozmiar tablicy (potęga 2)
-  ValueDestructorFn value_destructor; // Funkcja do zwalniania wartości
-  HashMapEntry **buckets;             // Tablica wskaźników do list wpisów
+  size_t size;                        // Current number of stored elements
+  size_t capacity;                    // Bucket count (always a power of 2)
+  ValueDestructorFn value_destructor; // Optional destructor for stored values
+  HashMapEntry *
+      *buckets; // Array of bucket pointers (each bucket = linked list)
 } HashMapInner;
 
-// --- Funkcje pomocnicze ---
+// --- Helper Functions ---
 
 /**
- * @brief Funkcja haszująca klucz.
+ * @brief Hash function for a size_t key.
+ *
+ * Uses a fast 64-bit FNV-style mixing function and masks with capacity-1
+ * to compute the bucket index.
  */
 static size_t hash(size_t key, size_t capacity) {
-  // Prosta, szybka funkcja haszująca FNV-style na 64 bitach
   key = (key ^ (key >> 30)) * 0xbf58476d1ce4e5b9UL;
   key = (key ^ (key >> 27)) * 0x94d049bb133111ebUL;
   key = key ^ (key >> 31);
   return key & (capacity - 1);
 }
 
-// --- Implementacja interfejsu publicznego (PascalCase) ---
+// --- Public API Implementation ---
 
+/**
+ * @brief Creates a new hash map with INITIAL_CAPACITY buckets.
+ *
+ * The returned object is an opaque pointer to HashMapInner.
+ */
 HashMap HashMap__new(ValueDestructorFn value_destructor) {
   HashMapInner *map = (HashMapInner *)malloc(sizeof(HashMapInner));
   if (!map)
@@ -50,36 +60,36 @@ HashMap HashMap__new(ValueDestructorFn value_destructor) {
   map->capacity = INITIAL_CAPACITY;
   map->value_destructor = value_destructor;
 
-  // calloc inicjalizuje pamięć zerami (wskaźniki na NULL)
+  // calloc zero-initializes the bucket array so all pointers start as NULL
   map->buckets = (HashMapEntry **)calloc(map->capacity, sizeof(HashMapEntry *));
-
   if (!map->buckets) {
     free(map);
     return NULL;
   }
 
-  // Zwracamy nieprzezroczysty wskaźnik
-  return (HashMap)map;
+  return (HashMap)map; // Return opaque pointer
 }
 
+/**
+ * @brief Deallocates the entire hash map, including all entries and values.
+ */
 void HashMap__drop(HashMap self) {
   if (!self)
     return;
 
   HashMapInner *map = (HashMapInner *)self;
 
-  // Przechodzimy przez wszystkie kubełki i listy
+  // Traverse buckets and free all chained entries
   for (size_t i = 0; i < map->capacity; ++i) {
     HashMapEntry *entry = map->buckets[i];
     while (entry) {
       HashMapEntry *next = entry->next;
 
-      // 1. Zwalnianie wartości, jeśli destruktor jest ustawiony
+      // Call user-provided destructor if available
       if (map->value_destructor && entry->value) {
         map->value_destructor(entry->value);
       }
 
-      // 2. Zwalnianie samego węzła wpisu
       free(entry);
       entry = next;
     }
@@ -89,6 +99,9 @@ void HashMap__drop(HashMap self) {
   free(map);
 }
 
+/**
+ * @brief Retrieves the value associated with a key, or NULL if not found.
+ */
 void *HashMap__get(HashMap self, size_t key) {
   if (!self)
     return NULL;
@@ -98,15 +111,17 @@ void *HashMap__get(HashMap self, size_t key) {
 
   HashMapEntry *entry = map->buckets[index];
   while (entry) {
-    if (entry->key == key) {
+    if (entry->key == key)
       return entry->value;
-    }
     entry = entry->next;
   }
 
-  return NULL; // Nie znaleziono klucza
+  return NULL; // Key not found
 }
 
+/**
+ * @brief Returns the number of elements stored in the map.
+ */
 size_t HashMap__size(HashMap self) {
   if (!self)
     return 0;
@@ -115,8 +130,13 @@ size_t HashMap__size(HashMap self) {
   return map->size;
 }
 
-// --- Funkcja do rehaszowania (prywatna) ---
+// --- Resize (Private) ---
 
+/**
+ * @brief Internal function that resizes the bucket array to new_capacity.
+ *
+ * Recomputes indices and moves all entries into the new bucket structure.
+ */
 static bool HashMap__resize(HashMapInner *map, size_t new_capacity) {
   HashMapEntry **new_buckets =
       (HashMapEntry **)calloc(new_capacity, sizeof(HashMapEntry *));
@@ -129,16 +149,14 @@ static bool HashMap__resize(HashMapInner *map, size_t new_capacity) {
   map->buckets = new_buckets;
   map->capacity = new_capacity;
 
-  // Przenosimy istniejące wpisy
+  // Rehash existing entries into the new bucket array
   for (size_t i = 0; i < old_capacity; ++i) {
     HashMapEntry *entry = old_buckets[i];
     while (entry) {
       HashMapEntry *next = entry->next;
 
-      // Obliczamy nowy indeks
       size_t new_index = hash(entry->key, map->capacity);
 
-      // Wstawiamy na początek nowej listy w kubełku
       entry->next = map->buckets[new_index];
       map->buckets[new_index] = entry;
 
@@ -150,6 +168,14 @@ static bool HashMap__resize(HashMapInner *map, size_t new_capacity) {
   return true;
 }
 
+/**
+ * @brief Inserts or updates a key-value pair.
+ *
+ * If the key already exists, its value is replaced and the old value freed
+ * via the destructor. If not, a new entry is inserted.
+ *
+ * Automatically resizes the map when size >= capacity.
+ */
 bool HashMap__insert(HashMap self, size_t key, void *value) {
   if (!self)
     return false;
@@ -157,74 +183,71 @@ bool HashMap__insert(HashMap self, size_t key, void *value) {
   HashMapInner *map = (HashMapInner *)self;
   size_t index = hash(key, map->capacity);
 
-  // Przechowywana wartość jest zawsze zwalniana, gdy następuje aktualizacja,
-  // ponieważ to nowa wartość przejmuje jej miejsce.
-
-  // 1. Sprawdzenie, czy klucz już istnieje (aktualizacja)
+  // Check for existing key (update case)
   HashMapEntry *entry = map->buckets[index];
   while (entry) {
     if (entry->key == key) {
-      // Jeśli istniała stara wartość, zwalniamy ją
-      if (map->value_destructor && entry->value) {
+      // Replace old value
+      if (map->value_destructor && entry->value)
         map->value_destructor(entry->value);
-      }
+
       entry->value = value;
       return true;
     }
     entry = entry->next;
   }
 
-  // 2. Wstawienie nowego elementu (sprawdź, czy potrzebny resize)
+  // Grow map if needed
   if (map->size >= map->capacity) {
-    if (!HashMap__resize(map, map->capacity * 2)) {
-      return false; // Nie udało się powiększyć mapy
-    }
-    // Po resize obliczamy nowy indeks
-    index = hash(key, map->capacity);
+    if (!HashMap__resize(map, map->capacity * 2))
+      return false;
+
+    index = hash(key, map->capacity); // Recompute index after resize
   }
 
-  // Tworzenie nowego wpisu
+  // Insert a new entry at the front of the bucket chain
   HashMapEntry *new_entry = (HashMapEntry *)malloc(sizeof(HashMapEntry));
   if (!new_entry)
     return false;
 
   new_entry->key = key;
   new_entry->value = value;
-
-  // Wstawienie na początek listy (łańcuchowanie)
   new_entry->next = map->buckets[index];
   map->buckets[index] = new_entry;
-  map->size++;
 
+  map->size++;
   return true;
 }
 
+// --- Iterator Implementation ---
+
 /**
- * @brief Inicjalizuje iterator dla danej mapy.
+ * @brief Creates a new iterator positioned before the first element.
  */
 HashMapIterator HashMapIterator__new(const HashMap self) {
-  // Inicjalizacja: Wskaźnik na pierwszy wpis jest NULL, indeks kubełka = 0
   HashMapIterator iter = {
-      .map = self,
-      .bucket_index = 0,
-      .entry = NULL,
+      .map = self,       // Store the opaque pointer
+      .bucket_index = 0, // Start at bucket 0
+      .entry = NULL,     // No entry selected yet
   };
   return iter;
 }
 
 /**
- * @brief Pobiera następny element w mapie.
+ * @brief Retrieves the next key-value pair from the map.
+ *
+ * Returns:
+ * - true  if a key-value pair was produced
+ * - false if the iteration reached the end
  */
 bool HashMapIterator__next(HashMapIterator *self, size_t *out_key,
                            void **out_value) {
-  if (!self || !self->map) {
+  if (!self || !self->map)
     return false;
-  }
 
-  // Rzutowanie nieprzezroczystego wskaźnika
   const HashMapInner *map = (const HashMapInner *)self->map;
 
-  // 1. Kontynuuj w bieżącym łańcuchu (bucket)
+  // 1. Continue inside the current linked list if possible
   if (self->entry) {
     self->entry = self->entry->next;
     if (self->entry) {
@@ -234,29 +257,20 @@ bool HashMapIterator__next(HashMapIterator *self, size_t *out_key,
     }
   }
 
-  // 2. Szukaj następnego niepustego kubełka
-  // Jeśli self->entry jest NULL (koniec łańcucha lub nowa iteracja),
-  // szukaj od aktualnego self->bucket_index
-  for (/* Brak inicjalizacji */; self->bucket_index < map->capacity;
-       ++self->bucket_index) {
-
-    // Sprawdź, czy w kubełku istnieje łańcuch
+  // 2. Scan forward for the next non-empty bucket
+  for (; self->bucket_index < map->capacity; ++self->bucket_index) {
     if (map->buckets[self->bucket_index]) {
 
-      // Znaleziono nowy łańcuch, ustaw wskaźnik i zwróć element
       self->entry = map->buckets[self->bucket_index];
       *out_key = self->entry->key;
       *out_value = self->entry->value;
 
-      // Przesuń indeks kubełka do następnego, aby pętla for mogła
-      // kontynuować od tego miejsca w następnym wywołaniu, jeśli łańcuch się
-      // skończy
-      self->bucket_index++;
+      self->bucket_index++; // Prepare for next call
       return true;
     }
   }
 
-  // 3. Osiągnięto koniec mapy
+  // 3. End of map
   self->entry = NULL;
   return false;
 }

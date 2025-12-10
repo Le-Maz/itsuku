@@ -20,10 +20,10 @@ typedef struct MerkleTree {
   size_t nodes_len;
 } MerkleTree;
 
-// --- Funkcje dla MerkleTree ---
+// --- MerkleTree Functions ---
 
 /**
- * @brief Calculates the required size (in bytes) for Merkle Tree nodes.
+ * @brief Calculates the required node size for the Merkle Tree.
  */
 size_t MerkleTree__calculate_node_size(const Config *config);
 
@@ -38,48 +38,45 @@ MerkleTree *MerkleTree__new(Config config);
 void MerkleTree__drop(MerkleTree *self);
 
 /**
- * @brief Retrieves a constant reference to the node data at the specified
- * index.
+ * @brief Retrieves a constant reference to the node data at the given index.
  */
 const uint8_t *MerkleTree__get_node(const MerkleTree *self, size_t index);
 
 /**
- * @brief Computes the hash for a leaf node (a memory element).
+ * @brief Computes the hash for a single leaf node from a memory element.
  */
 void MerkleTree__compute_leaf_hash(const ChallengeId *challenge_id,
                                    const Element *element, size_t node_size,
                                    uint8_t *output);
 
 /**
- * @brief Populates all leaf nodes of the tree.
+ * @brief Populates all leaf nodes in the Merkle Tree.
  */
 void MerkleTree__compute_leaf_hashes(MerkleTree *self,
                                      const ChallengeId *challenge_id,
                                      const Memory *memory);
 
 /**
- * @brief Computes all intermediate nodes up to the root.
+ * @brief Computes all intermediate nodes up to the root node.
  */
 void MerkleTree__compute_intermediate_nodes(MerkleTree *self,
                                             const ChallengeId *challenge_id);
 
 /**
- * @brief Returns the indices of the left and right children for a given parent
- * index.
+ * @brief Returns the indices of the left and right children for a given parent.
  */
 void MerkleTree__children_of(size_t index, size_t *left_index,
                              size_t *right_index);
 
 /**
- * @brief Traces the Merkle path (authentication path) for a given node index.
- * @param nodes A pointer to a hash map (BTreeMap) to store the result (index ->
- * hash bytes).
+ * @brief Traces the Merkle authentication path for a given node index.
+ * @param nodes A hash map to store the resulting index -> node hash mapping.
  */
 void MerkleTree__trace_node(const MerkleTree *self, size_t index,
                             HashMap nodes);
 
-// --- Trait PartialMerkleTree (Dla weryfikacji) ---
-// Ponieważ Endianness zostało usunięte, PartialMerkleTree jest teraz proste
+// --- Trait PartialMerkleTree (for verification) ---
+// With endianness removed, this wrapper is simplified
 typedef struct PartialMerkleTree_Wrapper {
   void *data;
   const uint8_t *(*get_node)(void *data, size_t index, size_t *out_len);

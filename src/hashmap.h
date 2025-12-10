@@ -5,63 +5,72 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// --- Forward Declarations dla iteratora ---
-// Struktury te są definiowane w hashmap.c, ale iterator musi znać ich nazwy.
+// --- Forward declarations for the iterator ---
+// These structures are defined in hashmap.c, but the iterator must know their
+// names.
 typedef struct HashMapInner HashMapInner;
 typedef struct HashMapEntry HashMapEntry;
 
 /**
- * @brief Typ wskaźnika na funkcję destruktora, używaną do zwalniania pamięci
- * wartości (void *value) przechowywanych w mapie.
+ * @brief Type alias for a destructor function used to free memory
+ * associated with values (void *value) stored in the map.
  */
 typedef void (*ValueDestructorFn)(void *);
 
 /**
- * @brief Nieprzezroczysty typ reprezentujący mapę haszującą (hash map /
- * dictionary).
+ * @brief Opaque type representing a hash map (dictionary).
+ *
+ * Internally, this is a pointer to HashMapInner, but callers operate on it
+ * through an abstract void* handle.
  */
 typedef void *HashMap;
 
-// --- Nowa struktura dla iteratora ---
+// --- Iterator structure ---
 
 /**
- * @brief Struktura śledząca stan iteracji przez HashMap.
- * Umożliwia bezpieczne przechodzenie przez kubełki i listy (łańcuchy).
+ * @brief Tracks iteration state for the hash map.
+ *
+ * Enables safe traversal across buckets and chained entries while
+ * maintaining context for the current position in the map.
  */
 typedef struct HashMapIterator {
-  // Wskaźnik na bazową mapę. Musi być rzutowany na HashMapInner*.
-  const HashMap map;
-  // Aktualny indeks kubełka (bucket index).
-  size_t bucket_index;
-  // Wskaźnik na aktualny wpis w liście wewnątrz kubełka.
-  const HashMapEntry *entry;
+  const HashMap map; // Pointer to the underlying map, castable to HashMapInner*
+  size_t bucket_index;       // Index of the current bucket being inspected
+  const HashMapEntry *entry; // Pointer to the current entry within the bucket
 } HashMapIterator;
 
-// --- Funkcje dla HashMap (bez zmian) ---
-HashMap HashMap__new(ValueDestructorFn value_destructor);
-void HashMap__drop(HashMap self);
-bool HashMap__insert(HashMap self, size_t key, void *value);
-void *HashMap__get(HashMap self, size_t key);
-size_t HashMap__size(HashMap self);
+// --- HashMap API ---
 
-// --- Funkcje dla Iteratora (NOWE) ---
+HashMap HashMap__new(
+    ValueDestructorFn value_destructor); // Creates a new hash map instance
+void HashMap__drop(HashMap self);        // Releases the map and its values
+bool HashMap__insert(HashMap self, size_t key,
+                     void *value); // Inserts or overwrites a key-value pair
+void *HashMap__get(HashMap self,
+                   size_t key);     // Retrieves a value associated with a key
+size_t HashMap__size(HashMap self); // Returns the number of stored entries
+
+// --- Iterator API ---
 
 /**
- * @brief Inicjalizuje iterator dla danej mapy.
- * Należy użyć tej funkcji przed rozpoczęciem iteracji.
- * @param self Wskaźnik na HashMap, po której ma odbywać się iteracja.
- * @return Zwraca zainicjalizowany HashMapIterator.
+ * @brief Initializes an iterator for the given map.
+ *
+ * Must be called before beginning iteration.
+ * @param self Pointer to the hash map to iterate over.
+ * @return A fully initialized HashMapIterator instance.
  */
 HashMapIterator HashMapIterator__new(const HashMap self);
 
 /**
- * @brief Pobiera następny element w mapie.
- * Zwraca true, jeśli znaleziono następny element, lub false, jeśli osiągnięto
- * koniec. UWAGA: Iteracja jest bezpieczna, ale modyfikacja mapy podczas
- * iteracji jest niezdefiniowana.
- * @param self Wskaźnik na strukturę iteratora (HashMapIterator).
- * @param out_key Wskaźnik do zapisania klucza.
- * @param out_value Wskaźnik do zapisania wartości.
+ * @brief Retrieves the next key-value pair from the map.
+ *
+ * Returns true if a valid element was produced, or false if the end of the
+ * map was reached. Safe to call repeatedly until exhaustion.
+ * Modification of the map during iteration results in undefined behavior.
+ *
+ * @param self Pointer to the iterator structure.
+ * @param out_key Output pointer for the retrieved key.
+ * @param out_value Output pointer for the retrieved value.
  */
 bool HashMapIterator__next(HashMapIterator *self, size_t *out_key,
                            void **out_value);

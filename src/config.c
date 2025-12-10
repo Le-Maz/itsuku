@@ -2,15 +2,15 @@
 #include <stddef.h>
 
 /**
- * @brief Zwraca domyślne ustawienia konfiguracyjne Itsuku.
+ * @brief Returns the default Itsuku configuration settings.
  *
- * Parametry domyślne pochodzą z implementacji Config::default() w Rust:
+ * Default parameters correspond to the Rust implementation of
+ * Config::default():
  * - chunk_size: 1 << 15 (32,768)
- * - chunk_count: 1 << 10 (1,024)
- * - antecedent_count: 4
- * - difficulty_bits: 24
- * - search_length: 9 (L)
- *
+ * - total_chunk_count: 1 << 10 (1,024)
+ * - antecedent_element_count: 4
+ * - omega_difficulty_bits: 24
+ * - proof_search_length: 9
  */
 Config Config__default() {
   return (Config){
